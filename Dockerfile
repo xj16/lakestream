@@ -1,6 +1,7 @@
 # ---------- build stage ----------
-# Build the fat JAR with sbt-assembly on a JDK 11 + sbt image.
-FROM sbtscala/scala-sbt:eclipse-temurin-11.0.17_8_1.9.9_2.12.18 AS build
+# Build the fat JAR with sbt-assembly on a JDK 17 + sbt image. The sbt launcher
+# reads project/build.properties and bootstraps the pinned sbt version.
+FROM sbtscala/scala-sbt:eclipse-temurin-17_1.x AS build
 
 WORKDIR /app
 
@@ -14,8 +15,8 @@ COPY src ./src
 RUN sbt assembly
 
 # ---------- runtime stage ----------
-# Official Spark image already ships Spark 3.5.x + Hadoop 3 + a JRE.
-FROM apache/spark:3.5.1-scala2.12-java11-ubuntu
+# Official Spark image already ships Spark 3.5.x + Hadoop 3 + a JRE (Java 17).
+FROM apache/spark:3.5.1-scala2.12-java17-ubuntu
 
 USER root
 WORKDIR /opt/lakestream

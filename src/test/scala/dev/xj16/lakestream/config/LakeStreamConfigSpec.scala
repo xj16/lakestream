@@ -18,10 +18,10 @@ class LakeStreamConfigSpec extends AnyFunSuite {
       |  base-path = "s3a://bucket/delta"
       |  table-name = "events"
       |  checkpoint-path = "s3a://bucket/_ckpt"
-      |  s3-endpoint = "http://minio:9000"
-      |  s3-access-key = "ak"
-      |  s3-secret-key = "sk"
-      |  s3-path-style-access = true
+      |  endpoint = "http://minio:9000"
+      |  access-key = "ak"
+      |  secret-key = "sk"
+      |  path-style-access = true
       |}
       |stream {
       |  trigger-interval = "5 seconds"

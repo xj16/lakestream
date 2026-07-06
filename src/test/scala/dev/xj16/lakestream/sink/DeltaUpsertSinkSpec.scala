@@ -34,10 +34,10 @@ class DeltaUpsertSinkSpec extends SparkTestBase {
       basePath = s"file:///${dir.replace('\\', '/')}/delta",
       tableName = "events",
       checkpointPath = s"file:///${dir.replace('\\', '/')}/ckpt",
-      s3Endpoint = "",
-      s3AccessKey = "",
-      s3SecretKey = "",
-      s3PathStyleAccess = false
+      endpoint = "",
+      accessKey = "",
+      secretKey = "",
+      pathStyleAccess = false
     )
 
   private def tableCount(storage: StorageConfig): Long =

@@ -43,14 +43,14 @@ object SparkSessionFactory {
 
     // Configure S3A only when a MinIO/S3 endpoint is provided. For local FS
     // paths (tests, single-node dev) this block is skipped entirely.
-    if (storage.s3Endpoint.nonEmpty) {
+    if (storage.endpoint.nonEmpty) {
       val hc = spark.sparkContext.hadoopConfiguration
-      hc.set("fs.s3a.endpoint", storage.s3Endpoint)
-      hc.set("fs.s3a.access.key", storage.s3AccessKey)
-      hc.set("fs.s3a.secret.key", storage.s3SecretKey)
+      hc.set("fs.s3a.endpoint", storage.endpoint)
+      hc.set("fs.s3a.access.key", storage.accessKey)
+      hc.set("fs.s3a.secret.key", storage.secretKey)
       hc.set(
         "fs.s3a.path.style.access",
-        storage.s3PathStyleAccess.toString
+        storage.pathStyleAccess.toString
       )
       hc.set(
         "fs.s3a.impl",

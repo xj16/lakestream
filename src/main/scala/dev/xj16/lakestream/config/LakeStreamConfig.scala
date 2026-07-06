@@ -34,10 +34,12 @@ final case class StorageConfig(
     tableName: String,
     checkpointPath: String,
     // S3A / MinIO endpoint config; empty endpoint => real AWS S3.
-    s3Endpoint: String,
-    s3AccessKey: String,
-    s3SecretKey: String,
-    s3PathStyleAccess: Boolean
+    // Field names avoid a digit boundary so PureConfig's kebab-case mapping
+    // yields clean keys (`endpoint`, `access-key`, ...) under `storage`.
+    endpoint: String,
+    accessKey: String,
+    secretKey: String,
+    pathStyleAccess: Boolean
 ) {
   def tablePath: String      = s"${basePath.stripSuffix("/")}/$tableName"
   def checkpointFor(name: String): String =
