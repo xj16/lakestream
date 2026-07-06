@@ -1,0 +1,49 @@
+# --- Scala / sbt ---
+target/
+project/target/
+project/project/
+.bsp/
+.bloop/
+.metals/
+.scala-build/
+
+# --- JVM ---
+*.class
+hs_err_pid*.log
+
+# --- Node (not used, but excluded per policy) ---
+node_modules/
+dist/
+build/
+
+# --- Python (not used, but excluded per policy) ---
+__pycache__/
+.venv/
+venv/
+
+# --- Rust/other build dirs ---
+target/
+bin/
+obj/
+
+# --- Spark / streaming local state ---
+spark-warehouse/
+metastore_db/
+derby.log
+checkpoints/
+_checkpoints/
+/data/
+
+# --- Vagrant ---
+.vagrant/
+
+# --- Logs & tmp ---
+*.log
+*.tmp
+
+# --- IDE / OS ---
+.idea/
+*.iml
+.vscode/
+.DS_Store
+Thumbs.db

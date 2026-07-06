@@ -1,0 +1,17 @@
+# kind cluster for a reproducible local LakeStream deployment.
+#   kind create cluster --name lakestream --config k8s/kind-cluster.yaml
+#
+# Port maps expose MinIO's S3 API + console to the host for inspection.
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: lakestream
+nodes:
+  - role: control-plane
+    extraPortMappings:
+      - containerPort: 30900   # MinIO S3 API (NodePort)
+        hostPort: 9000
+        protocol: TCP
+      - containerPort: 30901   # MinIO console (NodePort)
+        hostPort: 9001
+        protocol: TCP
+  - role: worker
