@@ -30,9 +30,12 @@ object EventTransforms {
         from_json(col("value").cast("string"), EventSchema.eventSchema)
           .as("payload")
       )
-      // Drop records that failed to parse into a struct at all.
-      .where(col("payload").isNotNull)
       .select(col("kafkaPartition"), col("kafkaOffset"), col("payload.*"))
+      // Drop unparseable records. Note: for malformed input, Spark's PERMISSIVE
+      // `from_json` yields a NON-null struct whose fields are all null (not a
+      // null struct), so we filter on a required field rather than the struct
+      // itself. A record with no `eventId` cannot be a valid event.
+      .where(col(EventSchema.idColumn).isNotNull)
 
     parsed
   }
