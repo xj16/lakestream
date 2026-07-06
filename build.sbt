@@ -60,13 +60,20 @@ lazy val root = (project in file("."))
 
     // Assembly: build a fat JAR for spark-submit / the Docker image.
     assembly / assemblyMergeStrategy := {
-      case PathList("META-INF", "services", xs @ _*) => MergeStrategy.concat
-      case PathList("META-INF", xs @ _*)             => MergeStrategy.discard
-      case "reference.conf"                          => MergeStrategy.concat
+      // JPMS module descriptors collide across multi-release jars; drop them.
+      case x if x.endsWith("module-info.class")       => MergeStrategy.discard
+      case PathList("META-INF", "services", xs @ _*)  => MergeStrategy.concat
+      case PathList("META-INF", "versions", xs @ _*)  => MergeStrategy.discard
+      case PathList("META-INF", xs @ _*)              => MergeStrategy.discard
+      case "reference.conf"                           => MergeStrategy.concat
       case "application.conf"                         => MergeStrategy.concat
-      case x =>
-        val old = (assembly / assemblyMergeStrategy).value
-        old(x)
+      case "log4j.properties" | "logback.xml"         => MergeStrategy.first
+      case PathList(ps @ _*) if ps.last endsWith ".properties" =>
+        MergeStrategy.first
+      // Service files + configs above are handled explicitly; for any other
+      // duplicate resource across the (small, Provided-Spark) classpath, take
+      // the first occurrence instead of failing the build.
+      case _ => MergeStrategy.first
     },
     assembly / assemblyJarName := s"${name.value}-assembly-${version.value}.jar",
     // Spark deps are Provided at runtime on the cluster; keep them out of the fat JAR.
