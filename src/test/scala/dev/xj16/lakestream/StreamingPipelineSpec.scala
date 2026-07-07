@@ -30,12 +30,12 @@ class StreamingPipelineSpec extends SparkTestBase {
       pathStyleAccess = false
     )
 
-  private def cfgAt(dir: String, dlq: Boolean = false): LakeStreamConfig =
+  private def cfgAt(dir: String, dlqEnabled: Boolean = false): LakeStreamConfig =
     LakeStreamConfig(
       kafka = KafkaConfig("unused:9092", "events", "earliest", 100000L, failOnDataLoss = false),
       storage = storageAt(dir),
       stream = StreamConfig("1 second", "append", 2, once = false),
-      dlq = DlqConfig(enabled = dlq, tableName = "events_dlq"),
+      dlq = DlqConfig(enabled = dlqEnabled, tableName = "events_dlq"),
       maintenance = MaintenanceConfig.default,
       metrics = MetricsConfig.default
     )
@@ -121,7 +121,7 @@ class StreamingPipelineSpec extends SparkTestBase {
   }
 
   test("streaming DLQ routes malformed records to the dead-letter table") {
-    val cfg      = cfgAt(s"$tmpDir/stream-dlq", dlq = true)
+    val cfg      = cfgAt(s"$tmpDir/stream-dlq", dlqEnabled = true)
     val pipeline = StreamingPipeline(spark, cfg)
     val ckpt     = s"file:///$tmpDir/stream-dlq/ckpt".replace('\\', '/')
 
