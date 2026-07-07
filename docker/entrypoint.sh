@@ -20,9 +20,13 @@ JAVA17_OPENS="--add-opens=java.base/java.lang=ALL-UNNAMED \
 --add-opens=java.base/sun.nio.ch=ALL-UNNAMED \
 --add-opens=java.base/sun.security.action=ALL-UNNAMED"
 
+# Which main class to run. Defaults to the streaming app; the demo profile
+# overrides it (e.g. DeltaVerify) to run a one-shot tool through spark-submit.
+MAIN_CLASS="${MAIN_CLASS:-dev.xj16.lakestream.LakeStreamApp}"
+
 exec "${SPARK_HOME}/bin/spark-submit" \
   --master "${SPARK_MASTER:-local[*]}" \
-  --class dev.xj16.lakestream.LakeStreamApp \
+  --class "${MAIN_CLASS}" \
   --packages "${SPARK_PACKAGES}" \
   --conf spark.sql.extensions=io.delta.sql.DeltaSparkSessionExtension \
   --conf spark.sql.catalog.spark_catalog=org.apache.spark.sql.delta.catalog.DeltaCatalog \

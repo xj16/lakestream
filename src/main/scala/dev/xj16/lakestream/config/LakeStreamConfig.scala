@@ -11,7 +11,10 @@ import pureconfig.generic.auto._
 final case class LakeStreamConfig(
     kafka: KafkaConfig,
     storage: StorageConfig,
-    stream: StreamConfig
+    stream: StreamConfig,
+    dlq: DlqConfig = DlqConfig.default,
+    maintenance: MaintenanceConfig = MaintenanceConfig.default,
+    metrics: MetricsConfig = MetricsConfig.default
 )
 
 /** Kafka source settings for the Structured Streaming reader. */
@@ -57,6 +60,63 @@ final case class StreamConfig(
     // When true, run one micro-batch and stop (used by CI / smoke tests).
     once: Boolean
 )
+
+/**
+ * Dead-letter-queue settings. Records that fail to parse (no valid business
+ * key) are, when enabled, written to a second Delta table with the raw Kafka
+ * value plus partition/offset/error context instead of being silently dropped.
+ */
+final case class DlqConfig(
+    enabled: Boolean,
+    // Table name (under the same storage `basePath`) for rejected records.
+    tableName: String
+)
+
+object DlqConfig {
+  val default: DlqConfig = DlqConfig(enabled = false, tableName = "events_dlq")
+}
+
+/**
+ * Delta table maintenance. Streaming writes create many small files; running
+ * OPTIMIZE (with an optional ZORDER) compacts them and VACUUM reclaims space
+ * from tombstoned files. Maintenance runs every `everyBatches` micro-batches
+ * so it amortises over the stream instead of needing a separate cron job.
+ */
+final case class MaintenanceConfig(
+    enabled: Boolean,
+    // Run OPTIMIZE/VACUUM once every N committed micro-batches (0 disables).
+    everyBatches: Int,
+    // Column to ZORDER by during OPTIMIZE for data-skipping on point lookups.
+    zorderColumn: String,
+    // VACUUM retention in hours; Delta's floor is 168 (7 days) unless the
+    // retention-duration check is disabled.
+    vacuumRetentionHours: Int
+)
+
+object MaintenanceConfig {
+  val default: MaintenanceConfig = MaintenanceConfig(
+    enabled = false,
+    everyBatches = 50,
+    zorderColumn = "eventId",
+    vacuumRetentionHours = 168
+  )
+}
+
+/**
+ * Observability: an embedded HTTP server exposing `/healthz` (liveness),
+ * `/readyz` (readiness — is the streaming query active?), and `/metrics`
+ * (Prometheus text format) so k8s probes and a Prometheus scraper work
+ * without pulling in a heavy metrics framework.
+ */
+final case class MetricsConfig(
+    enabled: Boolean,
+    // TCP port for the embedded metrics/health server.
+    port: Int
+)
+
+object MetricsConfig {
+  val default: MetricsConfig = MetricsConfig(enabled = false, port = 9464)
+}
 
 object LakeStreamConfig {
 

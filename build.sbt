@@ -77,5 +77,19 @@ lazy val root = (project in file("."))
     },
     assembly / assemblyJarName := s"${name.value}-assembly-${version.value}.jar",
     // Spark deps are Provided at runtime on the cluster; keep them out of the fat JAR.
-    assembly / assemblyPackageScala / assembleArtifact := true
+    assembly / assemblyPackageScala / assembleArtifact := true,
+
+    // --- Coverage (sbt-scoverage) ---
+    // Exclude entrypoints and external-service tools that cannot run without a
+    // live Kafka/MinIO in unit CI; the measured surface is the pure + Spark
+    // logic that the ScalaTest suite actually drives.
+    coverageExcludedPackages := Seq(
+      "dev.xj16.lakestream.tools.EventProducer",
+      "dev.xj16.lakestream.tools.DeltaMaintenance",
+      "dev.xj16.lakestream.LakeStreamApp",
+      "dev.xj16.lakestream.source.KafkaSource",
+      "dev.xj16.lakestream.spark.SparkSessionFactory"
+    ).mkString(";"),
+    coverageMinimumStmtTotal := 70,
+    coverageFailOnMinimum := false
   )

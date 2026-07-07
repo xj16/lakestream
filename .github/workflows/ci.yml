@@ -37,8 +37,22 @@ jobs:
       - name: Compile
         run: sbt compile
 
-      - name: Run tests
-        run: sbt test
+      - name: Run tests with coverage
+        run: sbt coverage test coverageReport
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          files: target/scala-2.12/coverage-report/cobertura.xml
+          flags: unittests
+          fail_ci_if_error: false
+
+      - name: Upload coverage HTML report
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: target/scala-2.12/scoverage-report/
+          if-no-files-found: warn
 
       - name: Assemble fat JAR
         run: sbt assembly

@@ -72,6 +72,40 @@ object EventTransforms {
   def clickstreamPipeline(raw: DataFrame): DataFrame =
     dedupeWithinBatch(enrich(parseKafkaValue(raw)))
 
+  /**
+   * Extract the records a strict parse would REJECT: rows whose JSON either
+   * fails to parse or lacks the required business key. Instead of dropping them
+   * silently (the default), the caller can persist these to a dead-letter table
+   * with enough context (partition/offset/raw value/reason) to debug the
+   * producer. This is the mirror image of [[parseKafkaValue]].
+   *
+   * Output columns: `kafkaPartition`, `kafkaOffset`, `rawValue`, `errorReason`.
+   */
+  def deadLetters(raw: DataFrame): DataFrame = {
+    val parsed = raw.select(
+      col("partition").as("kafkaPartition"),
+      col("offset").as("kafkaOffset"),
+      col("value").cast("string").as("rawValue"),
+      from_json(col("value").cast("string"), EventSchema.eventSchema)
+        .as("payload")
+    )
+    parsed
+      .where(col(s"payload.${EventSchema.idColumn}").isNull)
+      .withColumn(
+        "errorReason",
+        when(col("rawValue").isNull, lit("null value"))
+          .when(
+            // A struct whose id is null after a PERMISSIVE parse means either
+            // malformed JSON or a missing required field.
+            length(trim(col("rawValue"))) === 0,
+            lit("empty value")
+          )
+          .otherwise(lit("unparseable or missing eventId"))
+      )
+      .withColumn("ingestTime", current_timestamp())
+      .select("kafkaPartition", "kafkaOffset", "rawValue", "errorReason", "ingestTime")
+  }
+
   /** Predicate string for the exactly-once MERGE match condition. */
   val mergeCondition: String =
     s"target.${EventSchema.idColumn} = source.${EventSchema.idColumn}"

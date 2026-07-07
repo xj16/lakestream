@@ -55,4 +55,37 @@ class LakeStreamConfigSpec extends AnyFunSuite {
     )
     assert(cfg.storage.tablePath == "s3a://bucket/delta/events")
   }
+
+  test("dlq / maintenance / metrics fall back to defaults when omitted") {
+    val cfg = LakeStreamConfig.fromString(hocon)
+    assert(!cfg.dlq.enabled)
+    assert(cfg.dlq.tableName == "events_dlq")
+    assert(!cfg.maintenance.enabled)
+    assert(cfg.maintenance.everyBatches == 50)
+    assert(cfg.maintenance.zorderColumn == "eventId")
+    assert(!cfg.metrics.enabled)
+    assert(cfg.metrics.port == 9464)
+  }
+
+  test("dlq / maintenance / metrics sections parse when provided") {
+    val extended = hocon +
+      """
+        |dlq { enabled = true, table-name = "bad_events" }
+        |maintenance {
+        |  enabled = true
+        |  every-batches = 25
+        |  zorder-column = "userId"
+        |  vacuum-retention-hours = 24
+        |}
+        |metrics { enabled = true, port = 9999 }
+        |""".stripMargin
+    val cfg = LakeStreamConfig.fromString(extended)
+    assert(cfg.dlq.enabled)
+    assert(cfg.dlq.tableName == "bad_events")
+    assert(cfg.maintenance.everyBatches == 25)
+    assert(cfg.maintenance.zorderColumn == "userId")
+    assert(cfg.maintenance.vacuumRetentionHours == 24)
+    assert(cfg.metrics.enabled)
+    assert(cfg.metrics.port == 9999)
+  }
 }

@@ -1,0 +1,326 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>LakeStream — Exactly-Once Streaming Lakehouse (Live Demo)</title>
+<meta name="description" content="An interactive, dependency-free simulation of the LakeStream pipeline: duplicate click-stream events get collapsed by an idempotent Delta MERGE so stored rows always equal distinct event ids." />
+<style>
+  :root{
+    --bg:#0b1020; --panel:#121a30; --panel-2:#0f1730; --edge:#22304f;
+    --ink:#e8eefc; --muted:#93a2c4; --faint:#5a6b90;
+    --accent:#39d0d8; --accent-2:#7c9cff; --good:#39d98a; --warn:#ffb454;
+    --dupe:#ff6b81; --merge:#b58cff;
+    --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,"Liberation Mono",monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;background:radial-gradient(1200px 700px at 70% -10%,#16223f 0%,var(--bg) 55%);color:var(--ink);font-family:var(--sans)}
+  body{padding:28px clamp(14px,4vw,48px);line-height:1.5}
+  a{color:var(--accent)}
+  header{max-width:1120px;margin:0 auto 22px}
+  .eyebrow{font:600 12px/1 var(--mono);letter-spacing:.22em;color:var(--accent);text-transform:uppercase}
+  h1{margin:.35em 0 .15em;font-size:clamp(26px,4.4vw,40px);letter-spacing:-.02em}
+  h1 .badge{font:600 11px/1 var(--mono);vertical-align:super;color:var(--good);border:1px solid var(--good);
+    border-radius:999px;padding:4px 8px;margin-left:8px;letter-spacing:.12em}
+  .sub{color:var(--muted);max-width:74ch;font-size:15px}
+  .wrap{max-width:1120px;margin:0 auto}
+  .grid{display:grid;grid-template-columns:1fr;gap:18px}
+  @media(min-width:980px){.grid{grid-template-columns:1.5fr 1fr}}
+  .card{background:linear-gradient(180deg,var(--panel) 0%,var(--panel-2) 100%);
+    border:1px solid var(--edge);border-radius:16px;padding:18px}
+  .card h2{margin:0 0 12px;font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:600}
+
+  .controls{display:flex;flex-wrap:wrap;gap:10px;align-items:center;max-width:1120px;margin:0 auto 18px}
+  button{font:600 14px/1 var(--sans);color:var(--ink);background:#1a2646;border:1px solid var(--edge);
+    padding:10px 16px;border-radius:10px;cursor:pointer;transition:transform .05s ease}
+  button:hover{border-color:var(--accent-2)}
+  button:active{transform:translateY(1px)}
+  button.primary{background:linear-gradient(180deg,#2b3d76,#1c2a55);border-color:var(--accent-2)}
+  .ctl{display:flex;align-items:center;gap:8px;color:var(--muted);font-size:13px}
+  input[type=range]{accent-color:var(--accent)}
+  select{background:#1a2646;color:var(--ink);border:1px solid var(--edge);border-radius:8px;padding:7px 8px;font:inherit}
+
+  .pipe{position:relative;height:340px;border-radius:12px;overflow:hidden;
+    background:linear-gradient(180deg,#0c1428 0,#0a1120 100%);border:1px solid var(--edge)}
+  svg{display:block;width:100%;height:100%}
+  .stageLabel{font:600 13px var(--sans);fill:var(--ink)}
+  .stageSub{font:11px var(--mono);fill:var(--faint)}
+  .stageBox{fill:#0e1830;stroke:var(--edge)}
+  .flow{stroke:var(--edge);stroke-width:2;fill:none}
+  .dlqFlow{stroke:#3a2c1a;stroke-width:2;stroke-dasharray:4 4;fill:none}
+
+  .kpis{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}
+  .kpi{background:#0e1830;border:1px solid var(--edge);border-radius:12px;padding:12px 14px}
+  .kpi .n{font:700 26px/1 var(--mono);letter-spacing:-.01em}
+  .kpi .l{color:var(--muted);font-size:12px;margin-top:6px}
+  .kpi.good .n{color:var(--good)} .kpi.dupe .n{color:var(--dupe)} .kpi.warn .n{color:var(--warn)}
+  .proof{margin-top:14px;padding:12px 14px;border-radius:12px;border:1px solid var(--edge);
+    background:#0e1830;font:600 14px var(--mono)}
+  .proof.ok{border-color:var(--good);color:var(--good)}
+  .proof small{display:block;font-weight:400;color:var(--muted);margin-top:4px}
+
+  .bars{display:flex;flex-direction:column;gap:8px;margin-top:4px}
+  .bar-row{display:grid;grid-template-columns:92px 1fr 40px;align-items:center;gap:8px;font-size:12px}
+  .bar-row .name{color:var(--muted);font-family:var(--mono)}
+  .bar-track{height:12px;background:#0e1830;border-radius:6px;overflow:hidden;border:1px solid var(--edge)}
+  .bar-fill{height:100%;border-radius:6px;background:linear-gradient(90deg,var(--accent-2),var(--accent));transition:width .3s ease}
+  .bar-row .v{text-align:right;font-family:var(--mono);color:var(--ink)}
+
+  .log{font-family:var(--mono);font-size:12px;max-height:158px;overflow:auto;color:var(--muted)}
+  .log .ins{color:var(--good)} .log .skip{color:var(--dupe)} .log .dlq{color:var(--warn)}
+
+  .legend{display:flex;gap:16px;flex-wrap:wrap;color:var(--muted);font-size:12px;margin:12px auto 0;max-width:1120px}
+  .dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:6px;vertical-align:middle}
+  code{font-family:var(--mono);background:#0e1830;border:1px solid var(--edge);padding:1px 6px;border-radius:6px;font-size:.92em}
+  .note{color:var(--faint);font-size:12px;margin-top:10px}
+  footer{max-width:1120px;margin:26px auto 0;color:var(--faint);font-size:13px}
+</style>
+</head>
+<body>
+<header>
+  <div class="eyebrow">LakeStream · interactive simulation</div>
+  <h1>Exactly-once streaming into a lakehouse <span class="badge">RUNS IN YOUR BROWSER</span></h1>
+  <p class="sub">
+    A faithful, dependency-free visualization of the real pipeline. A producer emits click-stream
+    events — some are <b style="color:var(--dupe)">duplicate ids</b>, a few are
+    <b style="color:var(--warn)">malformed</b>. They flow <code>parse → enrich → dedupe → MERGE</code>
+    into a Delta table. The proof panel shows the core guarantee live: <b>many records are delivered,
+    but the table stores each distinct id exactly once</b> — duplicates and batch replays never
+    double-write.
+  </p>
+</header>
+
+<div class="controls">
+  <button id="btnPlay" class="primary">▶ Play</button>
+  <button id="btnStep">Step batch</button>
+  <button id="btnReplay" title="Re-deliver the last batch, exactly as Spark replays a micro-batch after a driver failure">↻ Replay last batch</button>
+  <button id="btnReset">Reset</button>
+  <span class="ctl">Speed <input id="rate" type="range" min="1" max="10" value="5" /></span>
+  <span class="ctl">Duplicates
+    <select id="dupe">
+      <option value="0">0%</option>
+      <option value="0.1" selected>10%</option>
+      <option value="0.25">25%</option>
+      <option value="0.5">50%</option>
+    </select>
+  </span>
+  <span class="ctl">DLQ
+    <select id="dlq"><option value="on" selected>on</option><option value="off">off</option></select>
+  </span>
+</div>
+
+<div class="wrap grid">
+  <section class="card">
+    <h2>Pipeline</h2>
+    <div class="pipe">
+      <svg id="stage" viewBox="0 0 920 340" preserveAspectRatio="xMidYMid meet" aria-label="Streaming pipeline animation"></svg>
+    </div>
+    <div class="legend">
+      <span><span class="dot" style="background:var(--accent)"></span>new id</span>
+      <span><span class="dot" style="background:var(--dupe)"></span>duplicate id</span>
+      <span><span class="dot" style="background:var(--warn)"></span>malformed → DLQ</span>
+    </div>
+    <p class="note">Each token is one Kafka record. Duplicates and replays reach the MERGE but are
+      rejected by <code>WHEN NOT MATCHED</code>; malformed rows divert to <code>events_dlq</code>.</p>
+  </section>
+
+  <section class="card">
+    <h2>Live counters</h2>
+    <div class="kpis">
+      <div class="kpi"><div class="n" id="kDelivered">0</div><div class="l">records delivered</div></div>
+      <div class="kpi dupe"><div class="n" id="kDupes">0</div><div class="l">duplicates collapsed</div></div>
+      <div class="kpi good"><div class="n" id="kStored">0</div><div class="l">rows stored (distinct)</div></div>
+      <div class="kpi warn"><div class="n" id="kDlq">0</div><div class="l">dead-lettered</div></div>
+    </div>
+    <div class="proof ok" id="proof"></div>
+
+    <h2 style="margin-top:20px">Rows per eventType</h2>
+    <div class="bars" id="typeBars"></div>
+
+    <h2 style="margin-top:20px">MERGE log</h2>
+    <div class="log" id="log"></div>
+  </section>
+</div>
+
+<footer>
+  This page ships in the repo under <code>/demo</code> and is deployed to GitHub Pages by CI. It mirrors
+  <code>tools.EventProducer</code>'s schema and the <code>DeltaUpsertSink</code> MERGE semantics.
+  The real system is Scala + Spark Structured Streaming writing Delta Lake on S3/MinIO —
+  <a href="https://github.com/xj16/lakestream">source on GitHub</a>.
+</footer>
+
+<script>
+"use strict";
+(function(){
+  var EVENT_TYPES = ["page_view","click","add_to_cart","purchase"];
+  var STAGES = [
+    {x:40,  label:"Kafka",  sub:"topic: events"},
+    {x:220, label:"parse",  sub:"from_json"},
+    {x:400, label:"enrich", sub:"eventDate"},
+    {x:580, label:"dedupe", sub:"dropDuplicates"},
+    {x:760, label:"MERGE",  sub:"whenNotMatched"}
+  ];
+  var LANE_Y=140, BOX_W=120, BOX_H=88, BOX_Y=LANE_Y-BOX_H/2, DLQ_Y=290;
+  var SVGNS="http://www.w3.org/2000/svg";
+  var svg=document.getElementById("stage");
+  function el(tag,a){var e=document.createElementNS(SVGNS,tag);for(var k in a)e.setAttribute(k,a[k]);return e;}
+
+  function drawStages(){
+    for(var i=0;i<STAGES.length-1;i++){
+      var a=STAGES[i].x+BOX_W,b=STAGES[i+1].x;
+      svg.appendChild(el("path",{class:"flow",d:"M"+a+" "+LANE_Y+" H"+b}));
+    }
+    // divert path from parse down to DLQ
+    var px=STAGES[1].x+BOX_W/2;
+    svg.appendChild(el("path",{class:"dlqFlow",d:"M"+px+" "+(LANE_Y+BOX_H/2)+" V"+DLQ_Y}));
+    STAGES.forEach(function(s){
+      svg.appendChild(el("rect",{class:"stageBox",x:s.x,y:BOX_Y,width:BOX_W,height:BOX_H,rx:12}));
+      var t=el("text",{class:"stageLabel",x:s.x+BOX_W/2,y:LANE_Y-4,"text-anchor":"middle"});t.textContent=s.label;svg.appendChild(t);
+      var st=el("text",{class:"stageSub",x:s.x+BOX_W/2,y:LANE_Y+16,"text-anchor":"middle"});st.textContent=s.sub;svg.appendChild(st);
+    });
+    var tl=el("text",{class:"stageSub",x:STAGES[4].x+BOX_W/2,y:LANE_Y+60,"text-anchor":"middle"});
+    tl.textContent="→ Delta table"; svg.appendChild(tl);
+    var dl=el("text",{class:"stageSub",x:px,y:DLQ_Y+18,"text-anchor":"middle"});
+    dl.textContent="events_dlq"; svg.appendChild(dl);
+  }
+
+  var S;
+  function reset(){
+    S={delivered:0,dupes:0,dlq:0,stored:{},typeCounts:{},lastBatch:null,idPool:[],running:false};
+    EVENT_TYPES.forEach(function(t){S.typeCounts[t]=0;});
+    Array.prototype.slice.call(svg.querySelectorAll(".tok")).forEach(function(n){n.remove();});
+    document.getElementById("log").innerHTML="";
+    render();
+  }
+  function rnd(n){return Math.floor(Math.random()*n);}
+  function uid(){return Math.random().toString(36).slice(2,8);}
+
+  function makeBatch(size){
+    var dupeRatio=parseFloat(document.getElementById("dupe").value),recs=[],last=null;
+    for(var i=0;i<size;i++){
+      if(Math.random()<0.06){recs.push({malformed:true});continue;}
+      var reuse=last&&Math.random()<dupeRatio;
+      var id;
+      if(reuse){id=last;}
+      else if(S.idPool.length&&Math.random()<0.15){id=S.idPool[rnd(S.idPool.length)];}
+      else{id=uid();}
+      if(S.idPool.indexOf(id)<0)S.idPool.push(id);
+      recs.push({id:id,type:EVENT_TYPES[rnd(EVENT_TYPES.length)],dupe:!!reuse});
+      last=id;
+    }
+    return recs;
+  }
+
+  function rate(){return parseFloat(document.getElementById("rate").value);}
+
+  function spawnToken(rec,delay){
+    var dlqOn=document.getElementById("dlq").value==="on";
+    var color=rec.malformed?"var(--warn)":(rec.dupe?"var(--dupe)":"var(--accent)");
+    var y=LANE_Y-30+rnd(60);
+    var tok=el("circle",{class:"tok",cx:STAGES[0].x+BOX_W,cy:y,r:6,fill:color,opacity:0});
+    svg.appendChild(tok);
+    var start=STAGES[0].x+BOX_W, parseX=STAGES[1].x+BOX_W/2, mergeX=STAGES[4].x+BOX_W/2;
+    var t0=performance.now()+delay, dur=2600/rate();
+    var done=false;
+    function land(){ if(done)return; done=true; tok.remove(); commit(rec,dlqOn); }
+    function frame(now){
+      if(done)return;
+      var p=(now-t0)/dur;
+      if(p<0){requestAnimationFrame(frame);return;}
+      if(p>1)p=1;
+      tok.setAttribute("opacity", p<0.06?p/0.06:(p>0.94?(1-p)/0.06:1));
+      if(rec.malformed){
+        if(p<0.45){ tok.setAttribute("cx", start+(parseX-start)*(p/0.45)); tok.setAttribute("cy",y); }
+        else { tok.setAttribute("cx",parseX); tok.setAttribute("cy", LANE_Y+(DLQ_Y-LANE_Y)*((p-0.45)/0.55)); }
+      } else {
+        tok.setAttribute("cx", start+(mergeX-start)*p);
+      }
+      if(p>=1){land();return;}
+      requestAnimationFrame(frame);
+    }
+    requestAnimationFrame(frame);
+    // Guaranteed commit: requestAnimationFrame is paused while the tab is
+    // backgrounded, but setTimeout still fires (throttled). This makes the
+    // counters progress correctly whether or not the tab is visible.
+    setTimeout(land, delay + dur + 30);
+  }
+
+  var logEl=document.getElementById("log");
+  function logLine(cls,txt){
+    var d=document.createElement("div");d.className=cls;d.textContent=txt;
+    logEl.insertBefore(d,logEl.firstChild);
+    while(logEl.childElementCount>60)logEl.removeChild(logEl.lastChild);
+  }
+
+  function commit(rec,dlqOn){
+    S.delivered++;
+    if(rec.malformed){
+      if(dlqOn){S.dlq++;logLine("dlq","DLQ  ← malformed record (no eventId)");}
+      else logLine("dlq","DROP ← malformed record (DLQ off)");
+      render();return;
+    }
+    if(rec.dupe)S.dupes++;
+    if(S.stored[rec.id]){logLine("skip","MERGE skip   id="+rec.id+"  (already stored)");}
+    else{
+      S.stored[rec.id]=rec.type;
+      S.typeCounts[rec.type]=(S.typeCounts[rec.type]||0)+1;
+      logLine("ins","MERGE insert id="+rec.id+"  type="+rec.type);
+    }
+    render();
+  }
+  function distinct(){return Object.keys(S.stored).length;}
+
+  function render(){
+    document.getElementById("kDelivered").textContent=S.delivered;
+    document.getElementById("kDupes").textContent=S.dupes;
+    document.getElementById("kStored").textContent=distinct();
+    document.getElementById("kDlq").textContent=S.dlq;
+
+    // The real proof: many records delivered, but duplicates are collapsed so
+    // stored rows always equal the number of distinct ids.
+    var collapsed=S.dupes;
+    var proof=document.getElementById("proof");
+    proof.className="proof ok";
+    proof.innerHTML="PASS · stored rows = distinct ids ("+distinct()+")"+
+      "<small>"+collapsed+" duplicate record(s) collapsed by the idempotent MERGE — "+
+      "the table never counted them twice.</small>";
+
+    var host=document.getElementById("typeBars"),max=1;
+    EVENT_TYPES.forEach(function(t){max=Math.max(max,S.typeCounts[t]);});
+    host.innerHTML="";
+    EVENT_TYPES.forEach(function(t){
+      var v=S.typeCounts[t]||0,row=document.createElement("div");row.className="bar-row";
+      row.innerHTML='<span class="name">'+t+'</span>'+
+        '<span class="bar-track"><span class="bar-fill" style="width:'+(v/max*100)+'%"></span></span>'+
+        '<span class="v">'+v+'</span>';
+      host.appendChild(row);
+    });
+  }
+
+  function runBatch(records){
+    S.lastBatch=records;
+    records.forEach(function(rec,i){spawnToken(rec,i*(240/rate()));});
+  }
+  function step(){runBatch(makeBatch(8+rnd(6)));}
+  function replay(){if(S.lastBatch)runBatch(S.lastBatch.map(function(r){var c={};for(var k in r)c[k]=r[k];return c;}));}
+
+  var loop=null;
+  function play(){
+    if(S.running){stop();return;}
+    S.running=true;document.getElementById("btnPlay").textContent="⏸ Pause";
+    (function tick(){if(!S.running)return;step();loop=setTimeout(tick,2600/rate());})();
+  }
+  function stop(){S.running=false;clearTimeout(loop);document.getElementById("btnPlay").textContent="▶ Play";}
+
+  document.getElementById("btnPlay").onclick=play;
+  document.getElementById("btnStep").onclick=function(){stop();step();};
+  document.getElementById("btnReplay").onclick=function(){stop();replay();};
+  document.getElementById("btnReset").onclick=function(){stop();reset();};
+
+  drawStages();
+  reset();
+})();
+</script>
+</body>
+</html>

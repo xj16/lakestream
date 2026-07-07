@@ -1,12 +1,15 @@
 # Local end-to-end LakeStream stack: Kafka + MinIO + the streaming job.
-# Bring it up with:  docker compose up --build
 #
-# Then seed some events (from the host, needs a JDK):
-#   java -cp target/scala-2.12/lakestream-assembly-0.1.0.jar \
-#     dev.xj16.lakestream.tools.EventProducer localhost:9092 events 2000
+#   docker compose up --build                 # core stack only
+#   docker compose --profile demo up --build  # + auto-seed 2000 events, then verify
+#
+# The `demo` profile makes the stack self-populating: a one-shot `producer`
+# publishes 2000 events (~10% duplicate ids) and a `verify` job then asserts
+# that the Delta table row count equals the number of distinct event ids,
+# printing PASS/FAIL — no manual steps, no eyeballing the MinIO console.
 #
 # Inspect the Delta table via the MinIO console at http://localhost:9001
-# (minioadmin / minioadmin).
+# (minioadmin / minioadmin), or the job's metrics at http://localhost:9464/metrics.
 
 services:
   kafka:
@@ -60,6 +63,8 @@ services:
 
   lakestream:
     build: .
+    ports:
+      - "9464:9464" # metrics/health: /healthz /readyz /metrics
     depends_on:
       kafka:
         condition: service_healthy
@@ -78,4 +83,49 @@ services:
       S3_ACCESS_KEY: "minioadmin"
       S3_SECRET_KEY: "minioadmin"
       S3_PATH_STYLE_ACCESS: "true"
-      STREAM_TRIGGER_INTERVAL: "10 seconds"
+      STREAM_TRIGGER_INTERVAL: "5 seconds"
+      METRICS_ENABLED: "true"
+      METRICS_PORT: "9464"
+      DLQ_ENABLED: "true"
+      MAINTENANCE_ENABLED: "true"
+      MAINTENANCE_EVERY_BATCHES: "20"
+
+  # ---- demo profile: self-seeding + verification -------------------------
+  # `docker compose --profile demo up --build`
+
+  # Publishes 2000 synthetic events (~10% duplicate ids) once Kafka is up.
+  producer:
+    profiles: ["demo"]
+    build: .
+    depends_on:
+      kafka:
+        condition: service_healthy
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - 'java -cp /opt/lakestream/app.jar
+         dev.xj16.lakestream.tools.EventProducer kafka:9092 events 2000 0.1'
+
+  # Waits for the pipeline to catch up, then asserts count == distinct(eventId).
+  # Exits non-zero (failing the profile) if exactly-once ever regresses.
+  verify:
+    profiles: ["demo"]
+    build: .
+    depends_on:
+      producer:
+        condition: service_completed_successfully
+      minio:
+        condition: service_healthy
+    environment:
+      SPARK_MASTER: "local[*]"
+      MAIN_CLASS: "dev.xj16.lakestream.tools.DeltaVerify"
+      STORAGE_BASE_PATH: "s3a://lakehouse/delta"
+      STORAGE_CHECKPOINT_PATH: "s3a://lakehouse/_checkpoints"
+      S3_ENDPOINT: "http://minio:9000"
+      S3_ACCESS_KEY: "minioadmin"
+      S3_SECRET_KEY: "minioadmin"
+      S3_PATH_STYLE_ACCESS: "true"
+    # Give the streaming job time to consume the 2000 events before verifying.
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - 'echo "waiting for the pipeline to consume events..."; sleep 45;
+         /opt/lakestream/entrypoint.sh'

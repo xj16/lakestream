@@ -30,6 +30,9 @@ trait SparkTestBase extends AnyFunSuite with BeforeAndAfterAll {
       )
       .config("spark.sql.shuffle.partitions", "2")
       .config("spark.ui.enabled", "false")
+      // Pin the timezone so epoch-millis -> eventDate derivation is
+      // deterministic regardless of the CI runner's local time.
+      .config("spark.sql.session.timeZone", "UTC")
       .config("spark.sql.warehouse.dir", s"$tmpDir/warehouse")
       .getOrCreate()
     spark.sparkContext.setLogLevel("ERROR")

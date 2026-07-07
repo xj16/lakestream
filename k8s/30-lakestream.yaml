@@ -16,6 +16,15 @@ data:
   S3_ENDPOINT: "http://minio.lakestream.svc.cluster.local:9000"
   S3_PATH_STYLE_ACCESS: "true"
   STREAM_TRIGGER_INTERVAL: "10 seconds"
+  # Observability: expose /healthz, /readyz, /metrics on :9464 for the probes
+  # below and any Prometheus scrape.
+  METRICS_ENABLED: "true"
+  METRICS_PORT: "9464"
+  # Counter the streaming small-files problem without a separate cron job.
+  MAINTENANCE_ENABLED: "true"
+  MAINTENANCE_EVERY_BATCHES: "50"
+  # Capture unparseable records instead of dropping them.
+  DLQ_ENABLED: "true"
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -44,6 +53,59 @@ spec:
               valueFrom: { secretKeyRef: { name: minio-creds, key: access-key } }
             - name: S3_SECRET_KEY
               valueFrom: { secretKeyRef: { name: minio-creds, key: secret-key } }
+          ports:
+            - { containerPort: 9464, name: metrics }
+          # Liveness: is the embedded metrics/health server (and thus the JVM)
+          # up? Readiness: is the streaming query actually active? A driver whose
+          # query has died reports 503 on /readyz so it stops receiving traffic
+          # and surfaces in dashboards.
+          livenessProbe:
+            httpGet: { path: /healthz, port: 9464 }
+            initialDelaySeconds: 40
+            periodSeconds: 15
+            failureThreshold: 3
+          readinessProbe:
+            httpGet: { path: /readyz, port: 9464 }
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            failureThreshold: 3
+          # SIGTERM handling: the app stops the StreamingQuery gracefully so the
+          # in-flight micro-batch commits its checkpoint before exit. Give it
+          # room beyond the default 30s grace period.
+          lifecycle:
+            preStop:
+              exec:
+                command: ["sh", "-c", "sleep 5"]
           resources:
             requests: { cpu: "500m", memory: "1Gi" }
             limits: { cpu: "2", memory: "2Gi" }
+      terminationGracePeriodSeconds: 60
+---
+# Expose the metrics/health port so a Prometheus ServiceMonitor (or a plain
+# `kubectl port-forward svc/lakestream 9464`) can scrape /metrics.
+apiVersion: v1
+kind: Service
+metadata:
+  name: lakestream
+  namespace: lakestream
+  labels: { app: lakestream }
+spec:
+  selector: { app: lakestream }
+  ports:
+    - { name: metrics, port: 9464, targetPort: 9464 }
+# ---------------------------------------------------------------------------
+# NOTE ON PRODUCTION HARDENING
+#
+# 1. Secrets: the committed `minio-creds` Secret (k8s/10-minio.yaml) is
+#    plaintext and fine ONLY for a local kind demo. In a real cluster, source
+#    these from sealed-secrets / external-secrets / a cloud secret manager and
+#    do NOT commit them.
+#
+# 2. Multi-executor: this Deployment runs Spark in local mode. For a true
+#    multi-executor deployment, swap it for a spark-operator `SparkApplication`
+#    CR pointing at the same image + `dev.xj16.lakestream.LakeStreamApp`; the
+#    metrics/health server and graceful-shutdown handling carry over unchanged.
+#
+# 3. Scraping: add a Prometheus-Operator ServiceMonitor selecting
+#    `app: lakestream` on the `metrics` port to auto-discover the endpoint.
+# ---------------------------------------------------------------------------
